@@ -20,4 +20,4 @@ def test_extract_images(pdf_document):
     md = renderer(pdf_document).markdown
 
     # Verify markdown
-    assert "jpeg" in md
+    assert "png" in md

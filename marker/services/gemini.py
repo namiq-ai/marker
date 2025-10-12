@@ -5,6 +5,7 @@ from io import BytesIO
 from typing import List, Annotated
 
 import PIL
+from PIL import Image
 from google import genai
 from google.genai import types
 from google.genai.errors import APIError
@@ -20,16 +21,63 @@ logger = get_logger()
 class BaseGeminiService(BaseService):
     gemini_model_name: Annotated[
         str, "The name of the Google model to use for the service."
-    ] = "gemini-2.0-flash"
+    ] = "gemini-2.5-flash"
     thinking_budget: Annotated[
         int, "The thinking token budget to use for the service."
     ] = None
 
+    # Default limits (fallback if model not in presets)
+    max_image_width: int = 896
+    max_image_height: int = 896
+
+    # Per-model resolution presets
+    model_resolutions = {
+        "gemini-2.0-flash": (1280, 1280),
+        "gemini-2.5-pro": (1280, 1280),
+        "gemini-2.5-flash": (1280, 1280),
+    }
+
+    def get_model_resolution(self) -> tuple[int, int]:
+        """Return (max_width, max_height) for the current Gemini model."""
+        return self.model_resolutions.get(
+            self.gemini_model_name,
+            (self.max_image_width, self.max_image_height),
+        )
+
+    def resize_for_llm(self, img: Image.Image, max_w: int, max_h: int) -> Image.Image:
+        """Resize so width ╬ô├½├▒ max_w and height ╬ô├½├▒ max_h.
+        Keeps aspect ratio, never upscales."""
+        w, h = img.size
+
+        if w > max_w or h > max_h:
+            scale = min(max_w / w, max_h / h)
+            new_w, new_h = int(w * scale), int(h * scale)
+            img = img.resize((new_w, new_h), Image.LANCZOS)
+
+        return img
+
     def img_to_bytes(self, img: PIL.Image.Image):
         image_bytes = BytesIO()
-        img.save(image_bytes, format="WEBP")
+        img.save(image_bytes, format="PNG")
         return image_bytes.getvalue()
 
+    def format_image_for_llm(self, image: PIL.Image.Image | List[PIL.Image.Image] | None):
+        """Resize images to fit within model-specific resolution (keeping aspect ratio, no upscale)."""
+        if image is None:
+            return []
+        if isinstance(image, Image.Image):
+            image = [image]
+
+        max_w, max_h = self.get_model_resolution()
+
+        image_parts = []
+        for img in image:
+            img = self.resize_for_llm(img, max_w, max_h)
+            image_parts.append(
+                types.Part.from_bytes(data=self.img_to_bytes(img), mime_type="image/png")
+            )
+        return image_parts
+         
     def get_google_client(self, timeout: int):
         raise NotImplementedError
 
@@ -53,7 +101,7 @@ class BaseGeminiService(BaseService):
             max_retries = self.max_retries
 
         if timeout is None:
-            timeout = self.timeout
+            timeout = self.timeout * 2
 
         client = self.get_google_client(timeout=timeout)
         image_parts = self.format_image_for_llm(image)

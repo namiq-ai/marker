@@ -23,11 +23,11 @@ class LLMTableProcessor(BaseLLMComplexBlockProcessor):
     max_rows_per_batch: Annotated[
         int,
         "If the table has more rows than this, chunk the table. (LLMs can be inaccurate with a lot of rows)",
-    ] = 60
+    ] = 100
     max_table_rows: Annotated[
         int,
         "The maximum number of rows in a table to process with the LLM processor.  Beyond this will be skipped.",
-    ] = 175
+    ] = 1000
     table_image_expansion_ratio: Annotated[
         float,
         "The ratio to expand the image by when cropping.",

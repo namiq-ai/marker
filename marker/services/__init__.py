@@ -10,16 +10,16 @@ import base64
 
 
 class BaseService:
-    timeout: Annotated[int, "The timeout to use for the service."] = 30
+    timeout: Annotated[int, "The timeout to use for the service."] = 55
     max_retries: Annotated[
         int, "The maximum number of retries to use for the service."
     ] = 2
-    retry_wait_time: Annotated[int, "The wait time between retries."] = 3
+    retry_wait_time: Annotated[int, "The wait time between retries."] = 5
     max_output_tokens: Annotated[
         int, "The maximum number of output tokens to generate."
     ] = None
 
-    def img_to_base64(self, img: PIL.Image.Image, format: str = "WEBP"):
+    def img_to_base64(self, img: PIL.Image.Image, format: str = "PNG"):
         image_bytes = BytesIO()
         img.save(image_bytes, format=format)
         return base64.b64encode(image_bytes.getvalue()).decode("utf-8")

@@ -8,6 +8,8 @@ from marker.logger import get_logger
 from openai import APITimeoutError, RateLimitError
 from PIL import Image
 from pydantic import BaseModel
+from io import BytesIO
+import base64
 
 from marker.schema.blocks import Block
 from marker.services import BaseService
@@ -28,7 +30,63 @@ class OpenAIService(BaseService):
     openai_image_format: Annotated[
         str,
         "The image format to use for the OpenAI-like service. Use 'png' for better compatability",
-    ] = "webp"
+    ] = "png"
+
+    max_image_width: int = 896   # max width for vision LLM (OpenAI compatible api)
+    max_image_height: int = 896  # max height for vision LLM (OpenAI compatible api)
+
+    # per-model resolution presets (add as needed)
+    model_resolutions = {
+        "gpt-4o": (1024, 1024),
+        "gpt-4o-mini": (896, 896),
+        "gpt-4o-mini-vision": (896, 896),  # example alias
+    }
+
+    def get_model_resolution(self):
+        """Return (max_width, max_height) for the current model."""
+        return self.model_resolutions.get(
+            self.openai_model,
+            (self.max_image_width, self.max_image_height),  # fallback
+        )
+
+    def format_image_for_llm(self, image: Image.Image | list[Image.Image] | None):
+        """Resize images to fit within model-specific resolution (keeping aspect ratio, no upscale)."""
+        if image is None:
+            return []
+
+        if isinstance(image, Image.Image):
+            image = [image]
+
+        max_w, max_h = self.get_model_resolution()
+
+        processed_images = []
+        for img in image:
+            img = self.resize_for_llm(img, max_w, max_h)
+            processed_images.append({
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/{self.openai_image_format};base64,{self.img_to_base64(img)}",
+                },
+            })
+        return processed_images
+
+    def resize_for_llm(self, img: Image.Image, max_w: int, max_h: int) -> Image.Image:
+        """Resize so width ╬ô├½├▒ max_w and height ╬ô├½├▒ max_h.
+        Keeps aspect ratio, never upscales."""
+        w, h = img.size
+
+        if w > max_w or h > max_h:
+            scale = min(max_w / w, max_h / h)
+            new_w, new_h = int(w * scale), int(h * scale)
+            img = img.resize((new_w, new_h), Image.LANCZOS)
+
+        return img
+
+    def img_to_base64(self, img: Image.Image) -> str:
+        """Convert PIL image to base64 string."""
+        buf = BytesIO()
+        img.save(buf, format=self.openai_image_format.upper())
+        return base64.b64encode(buf.getvalue()).decode("utf-8")
 
     def process_images(self, images: List[Image.Image]) -> List[dict]:
         """
@@ -71,8 +129,9 @@ class OpenAIService(BaseService):
             max_retries = self.max_retries
 
         if timeout is None:
-            timeout = self.timeout
-
+            timeout = self.timeout * 2 # double timeout for vision model
+        else:
+            timeout = timeout * 2
         client = self.get_client()
         image_data = self.format_image_for_llm(image)
 
@@ -92,7 +151,7 @@ class OpenAIService(BaseService):
                 response = client.beta.chat.completions.parse(
                     extra_headers={
                         "X-Title": "Marker",
-                        "HTTP-Referer": "https://github.com/datalab-to/marker",
+                        "HTTP-Referer": "https://github.com/hungle-i3/marker",
                     },
                     model=self.openai_model,
                     messages=messages,

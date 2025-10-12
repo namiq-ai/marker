@@ -89,7 +89,7 @@ def page_count(pdf_file: UploadedFile):
 
 def pillow_image_to_base64_string(img: Image) -> str:
     buffered = io.BytesIO()
-    img.save(buffered, format="JPEG")
+    img.save(buffered, format="PNG")
     return base64.b64encode(buffered.getvalue()).decode("utf-8")
 
 

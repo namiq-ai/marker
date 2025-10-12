@@ -20,7 +20,7 @@ class Settings(BaseSettings):
 
     # General
     OUTPUT_ENCODING: str = "utf-8"
-    OUTPUT_IMAGE_FORMAT: str = "JPEG"
+    OUTPUT_IMAGE_FORMAT: str = "PNG"
 
     # LLM
     GOOGLE_API_KEY: Optional[str] = ""
